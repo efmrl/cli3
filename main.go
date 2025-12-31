@@ -10,6 +10,8 @@ var CLI struct {
 	Hello  HelloCmd  `cmd:"" help:"Say hello world"`
 	Status StatusCmd `cmd:"" help:"Show site status and configuration"`
 	Config ConfigCmd `cmd:"" help:"View or modify configuration"`
+	Login  LoginCmd  `cmd:"" help:"Authenticate with efmrl server"`
+	Logout LogoutCmd `cmd:"" help:"Clear authentication credentials"`
 }
 
 type HelloCmd struct{}

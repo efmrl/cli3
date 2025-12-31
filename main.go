@@ -1,0 +1,28 @@
+package main
+
+import (
+	"fmt"
+
+	"github.com/alecthomas/kong"
+)
+
+var CLI struct {
+	Hello HelloCmd `cmd:"" help:"Say hello world"`
+}
+
+type HelloCmd struct{}
+
+func (h *HelloCmd) Run() error {
+	fmt.Println("hello world")
+	return nil
+}
+
+func main() {
+	ctx := kong.Parse(&CLI,
+		kong.Name("efmrl3"),
+		kong.Description("CLI for efmrl ephemeral web site hosting"),
+		kong.UsageOnError(),
+	)
+	err := ctx.Run()
+	ctx.FatalIfErrorf(err)
+}

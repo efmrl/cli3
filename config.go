@@ -20,6 +20,7 @@ type SiteConfig struct {
 	Name   string `toml:"name"`
 	SiteID string `toml:"site_id"`
 	Domain string `toml:"domain"`
+	Dir    string `toml:"dir,omitempty"`
 }
 
 // LoadConfig loads the efmrl.toml config file from the current directory
@@ -80,6 +81,7 @@ func (c *Config) GetBaseHost() string {
 
 type ConfigCmd struct {
 	ID       string `help:"Set the site ID"`
+	Dir      string `help:"Set the directory to sync"`
 	BaseHost string `hidden:"" help:"Set the base host for the efmrl server"`
 }
 
@@ -99,6 +101,12 @@ func (c *ConfigCmd) Run() error {
 		changed = true
 	}
 
+	// Update Dir if provided
+	if c.Dir != "" {
+		config.Site.Dir = c.Dir
+		changed = true
+	}
+
 	// Update BaseHost if provided
 	if c.BaseHost != "" {
 		config.BaseHost = c.BaseHost
@@ -110,6 +118,7 @@ func (c *ConfigCmd) Run() error {
 		fmt.Println("Current Configuration")
 		fmt.Println("=====================")
 		fmt.Printf("Site ID:   %s\n", config.Site.SiteID)
+		fmt.Printf("Dir:       %s\n", config.Site.Dir)
 		fmt.Printf("Base Host: %s\n", config.GetBaseHost())
 		if config.Site.Name != "" {
 			fmt.Printf("Name:      %s\n", config.Site.Name)
@@ -129,6 +138,9 @@ func (c *ConfigCmd) Run() error {
 	fmt.Printf("Configuration saved to %s\n", ConfigFileName)
 	if c.ID != "" {
 		fmt.Printf("  Site ID set to: %s\n", c.ID)
+	}
+	if c.Dir != "" {
+		fmt.Printf("  Dir set to: %s\n", c.Dir)
 	}
 	if c.BaseHost != "" {
 		fmt.Printf("  Base host set to: %s\n", c.BaseHost)

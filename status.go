@@ -33,6 +33,7 @@ func (s *StatusCmd) Run() error {
 	fmt.Printf("Name:      %s\n", config.Site.Name)
 	fmt.Printf("Site ID:   %s\n", config.Site.SiteID)
 	fmt.Printf("Domain:    %s\n", config.Site.Domain)
+	fmt.Printf("Dir:       %s\n", config.Site.Dir)
 	fmt.Printf("Base Host: %s\n", baseHost)
 	fmt.Printf("Logged in: %v\n", loggedIn)
 

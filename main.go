@@ -7,7 +7,8 @@ import (
 )
 
 var CLI struct {
-	Hello HelloCmd `cmd:"" help:"Say hello world"`
+	Hello  HelloCmd  `cmd:"" help:"Say hello world"`
+	Status StatusCmd `cmd:"" help:"Show site status and configuration"`
 }
 
 type HelloCmd struct{}

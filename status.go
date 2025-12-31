@@ -36,17 +36,36 @@ func (s *StatusCmd) Run() error {
 		baseURL := fmt.Sprintf("https://%s", baseHost)
 		apiClient, err := NewAPIClient(baseURL)
 		if err == nil {
+			// Fetch efmrl details (name, etc.)
 			resp, err := apiClient.Get(fmt.Sprintf("/admin/efmrls/%s", config.Site.SiteID))
 			if err == nil {
 				defer resp.Body.Close()
 				if resp.StatusCode == 200 {
 					var efmrlResp struct {
-						Name    string   `json:"name"`
-						Domains []string `json:"domains"`
+						Efmrl struct {
+							Name string `json:"name"`
+						} `json:"efmrl"`
 					}
 					if err := json.NewDecoder(resp.Body).Decode(&efmrlResp); err == nil {
-						efmrlName = efmrlResp.Name
-						efmrlDomains = efmrlResp.Domains
+						efmrlName = efmrlResp.Efmrl.Name
+					}
+				}
+			}
+
+			// Fetch domains separately
+			resp2, err := apiClient.Get(fmt.Sprintf("/admin/efmrls/%s/domains", config.Site.SiteID))
+			if err == nil {
+				defer resp2.Body.Close()
+				if resp2.StatusCode == 200 {
+					var domainsResp struct {
+						Domains []struct {
+							Domain string `json:"domain"`
+						} `json:"domains"`
+					}
+					if err := json.NewDecoder(resp2.Body).Decode(&domainsResp); err == nil {
+						for _, d := range domainsResp.Domains {
+							efmrlDomains = append(efmrlDomains, d.Domain)
+						}
 					}
 				}
 			}

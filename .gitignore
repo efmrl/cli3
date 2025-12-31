@@ -83,5 +83,6 @@ tags
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,vim,go
 
-# CLI binary
+# CLI binaries
 efmrl3
+cli3

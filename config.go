@@ -17,9 +17,7 @@ type Config struct {
 }
 
 type SiteConfig struct {
-	Name   string `toml:"name"`
 	SiteID string `toml:"site_id"`
-	Domain string `toml:"domain"`
 	Dir    string `toml:"dir,omitempty"`
 }
 
@@ -120,12 +118,6 @@ func (c *ConfigCmd) Run() error {
 		fmt.Printf("Site ID:   %s\n", config.Site.SiteID)
 		fmt.Printf("Dir:       %s\n", config.Site.Dir)
 		fmt.Printf("Base Host: %s\n", config.GetBaseHost())
-		if config.Site.Name != "" {
-			fmt.Printf("Name:      %s\n", config.Site.Name)
-		}
-		if config.Site.Domain != "" {
-			fmt.Printf("Domain:    %s\n", config.Site.Domain)
-		}
 		fmt.Printf("\nConfig file: %s\n", ConfigFileName)
 		return nil
 	}

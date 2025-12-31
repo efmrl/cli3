@@ -1,0 +1,34 @@
+#!/bin/bash
+
+set -e
+
+# If no arguments, show existing tags
+if [ $# -eq 0 ]; then
+    echo "Existing tags:"
+    git tag -l
+    exit 0
+fi
+
+TAG="$1"
+
+# Check for uncommitted changes
+if ! git diff-index --quiet HEAD --; then
+    echo "Error: Git working directory is not clean. Please commit or stash your changes."
+    exit 1
+fi
+
+# Check if there are unpushed commits
+if [ -n "$(git log @{u}.. 2>/dev/null)" ]; then
+    echo "Error: You have unpushed commits. Please push them before creating a tag."
+    exit 1
+fi
+
+# Create the tag
+echo "Creating tag: $TAG"
+git tag "$TAG"
+
+# Push the tag
+echo "Pushing tag: $TAG"
+git push origin "$TAG"
+
+echo "Successfully created and pushed tag: $TAG"

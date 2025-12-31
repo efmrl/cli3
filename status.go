@@ -16,11 +16,25 @@ func (s *StatusCmd) Run() error {
 		return fmt.Errorf("config file not found")
 	}
 
+	// Check login status
+	baseHost := config.GetBaseHost()
+	globalConfig, err := LoadGlobalConfig()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: Could not load credentials: %v\n", err)
+	}
+
+	var loggedIn bool
+	if globalConfig != nil {
+		_, loggedIn = globalConfig.GetHostCredentials(baseHost)
+	}
+
 	fmt.Println("Site Status")
 	fmt.Println("===========")
-	fmt.Printf("Name:    %s\n", config.Site.Name)
-	fmt.Printf("Site ID: %s\n", config.Site.SiteID)
-	fmt.Printf("Domain:  %s\n", config.Site.Domain)
+	fmt.Printf("Name:      %s\n", config.Site.Name)
+	fmt.Printf("Site ID:   %s\n", config.Site.SiteID)
+	fmt.Printf("Domain:    %s\n", config.Site.Domain)
+	fmt.Printf("Base Host: %s\n", baseHost)
+	fmt.Printf("Logged in: %v\n", loggedIn)
 
 	return nil
 }

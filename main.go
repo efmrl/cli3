@@ -13,7 +13,7 @@ var CLI struct {
 type HelloCmd struct{}
 
 func (h *HelloCmd) Run() error {
-	fmt.Println("hello world")
+	fmt.Println("hello mister zebra")
 	return nil
 }
 

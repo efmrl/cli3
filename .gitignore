@@ -81,4 +81,7 @@ tags
 # Persistent undo
 [._]*.un~
 
-# End of https://www.toptal.com/developers/gitignore/api/macos,vim,goefmrl3
+# End of https://www.toptal.com/developers/gitignore/api/macos,vim,go
+
+# CLI binary
+efmrl3

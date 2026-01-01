@@ -12,6 +12,7 @@ var CLI struct {
 	Config ConfigCmd `cmd:"" help:"View or modify configuration"`
 	Login  LoginCmd  `cmd:"" help:"Authenticate with efmrl server"`
 	Logout LogoutCmd `cmd:"" help:"Clear authentication credentials"`
+	Sync   SyncCmd   `cmd:"" help:"Synchronize local files with remote site"`
 }
 
 type HelloCmd struct{}

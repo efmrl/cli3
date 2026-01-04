@@ -48,9 +48,8 @@ func (d *DomainsListCmd) Run() error {
 
 	var result struct {
 		Domains []struct {
-			ID       int    `json:"id"`
-			EfmrlID  string `json:"efmrl_id"`
-			Domain   string `json:"domain"`
+			ID     int    `json:"id"`
+			Domain string `json:"domain"`
 		} `json:"domains"`
 	}
 

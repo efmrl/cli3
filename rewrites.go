@@ -49,7 +49,6 @@ func (r *RewritesListCmd) Run() error {
 	var result struct {
 		Rewrites []struct {
 			ID       int    `json:"id"`
-			EfmrlID  string `json:"efmrl_id"`
 			Filename string `json:"filename"`
 		} `json:"rewrites"`
 	}

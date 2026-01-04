@@ -6,12 +6,24 @@ import (
 
 // LogoutCmd handles clearing authentication credentials
 type LogoutCmd struct {
-	Host string `help:"Server host" default:"efmrl.samf.workers.dev"`
+	Host string `help:"Server host (defaults to base_host from efmrl.toml or tempemail.app)" default:""`
 	All  bool   `help:"Remove credentials for all hosts" default:"false"`
 }
 
 // Run executes the logout command
 func (l *LogoutCmd) Run() error {
+	// Determine which host to use
+	host := l.Host
+	if host == "" && !l.All {
+		// Try to load efmrl.toml from current directory
+		config, err := LoadConfig()
+		if err == nil && config.BaseHost != "" {
+			host = config.BaseHost
+		} else {
+			host = DefaultBaseHost
+		}
+	}
+
 	// Load global config
 	config, err := LoadGlobalConfig()
 	if err != nil {
@@ -37,18 +49,18 @@ func (l *LogoutCmd) Run() error {
 	}
 
 	// Remove credentials for specific host
-	_, ok := config.GetHostCredentials(l.Host)
+	_, ok := config.GetHostCredentials(host)
 	if !ok {
-		fmt.Printf("No credentials found for %s\n", l.Host)
+		fmt.Printf("No credentials found for %s\n", host)
 		return nil
 	}
 
-	config.DeleteHostCredentials(l.Host)
+	config.DeleteHostCredentials(host)
 
 	if err := SaveGlobalConfig(config); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
-	fmt.Printf("✓ Logged out from %s\n", l.Host)
+	fmt.Printf("✓ Logged out from %s\n", host)
 	return nil
 }

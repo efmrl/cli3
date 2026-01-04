@@ -9,7 +9,7 @@ import (
 )
 
 const ConfigFileName = "efmrl.toml"
-const DefaultBaseHost = "efmrl.samf.workers.dev"
+const DefaultBaseHost = "tempemail.app"
 
 type Config struct {
 	BaseHost string     `toml:"base_host,omitempty"`

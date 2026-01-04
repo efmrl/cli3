@@ -11,11 +11,24 @@ import (
 
 // LoginCmd handles user authentication via WorkOS device flow
 type LoginCmd struct {
-	Host string `help:"Server host" default:"efmrl.samf.workers.dev"`
+	Host string `help:"Server host (defaults to base_host from efmrl.toml or tempemail.app)" default:""`
 }
 
 // Run executes the login command
 func (l *LoginCmd) Run() error {
+	// Determine which host to use
+	host := l.Host
+	if host == "" {
+		// Try to load efmrl.toml from current directory
+		config, err := LoadConfig()
+		if err == nil && config.BaseHost != "" {
+			host = config.BaseHost
+			fmt.Printf("Using base_host from efmrl.toml: %s\n", host)
+		} else {
+			host = DefaultBaseHost
+		}
+	}
+
 	fmt.Println("Authenticating with efmrl...")
 
 	// Get WorkOS client ID
@@ -92,22 +105,22 @@ func (l *LoginCmd) Run() error {
 	}
 
 	// Step 5: Save tokens to global config
-	config, err := LoadGlobalConfig()
+	globalConfig, err := LoadGlobalConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	config.SetHostCredentials(l.Host, HostCredentials{
+	globalConfig.SetHostCredentials(host, HostCredentials{
 		AccessToken:  tokenResp.AccessToken,
 		RefreshToken: tokenResp.RefreshToken,
 	})
 
-	if err := SaveGlobalConfig(config); err != nil {
+	if err := SaveGlobalConfig(globalConfig); err != nil {
 		return fmt.Errorf("failed to save credentials: %w", err)
 	}
 
 	// Step 6: Verify authentication by calling /api/session
-	baseURL := fmt.Sprintf("https://%s", l.Host)
+	baseURL := fmt.Sprintf("https://%s", host)
 	apiClient, err := NewAPIClient(baseURL)
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)

@@ -292,25 +292,12 @@ func computeSyncPlan(local []LocalFile, remote []RemoteFile, force bool, deleteR
 	return plan
 }
 
-// executeSyncPlan performs the upload and delete operations
+// executeSyncPlan performs the delete and upload operations
 func executeSyncPlan(client *APIClient, siteID string, plan SyncPlan) error {
 	totalOps := len(plan.ToUpload) + len(plan.ToDelete)
 	currentOp := 0
 
-	// Upload files
-	for _, lf := range plan.ToUpload {
-		currentOp++
-		fmt.Printf("[%d/%d] Uploading %s... ", currentOp, totalOps, lf.Path)
-
-		if err := uploadFile(client, siteID, lf); err != nil {
-			fmt.Printf("FAILED\n")
-			return fmt.Errorf("failed to upload %s: %w", lf.Path, err)
-		}
-
-		fmt.Printf("OK\n")
-	}
-
-	// Delete files
+	// Delete files first to free up space
 	for _, rf := range plan.ToDelete {
 		currentOp++
 		fmt.Printf("[%d/%d] Deleting %s... ", currentOp, totalOps, rf.Path)
@@ -318,6 +305,19 @@ func executeSyncPlan(client *APIClient, siteID string, plan SyncPlan) error {
 		if err := deleteFile(client, siteID, rf.Path); err != nil {
 			fmt.Printf("FAILED\n")
 			return fmt.Errorf("failed to delete %s: %w", rf.Path, err)
+		}
+
+		fmt.Printf("OK\n")
+	}
+
+	// Upload files after deletes complete
+	for _, lf := range plan.ToUpload {
+		currentOp++
+		fmt.Printf("[%d/%d] Uploading %s... ", currentOp, totalOps, lf.Path)
+
+		if err := uploadFile(client, siteID, lf); err != nil {
+			fmt.Printf("FAILED\n")
+			return fmt.Errorf("failed to upload %s: %w", lf.Path, err)
 		}
 
 		fmt.Printf("OK\n")

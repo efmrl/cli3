@@ -32,6 +32,7 @@ func (s *StatusCmd) Run() error {
 	// Fetch efmrl details from server if logged in and we have a site ID
 	var efmrlName string
 	var efmrlDomains []string
+	var efmrlNotFound bool
 	if loggedIn && config.Site.SiteID != "" {
 		baseURL := fmt.Sprintf("https://%s", baseHost)
 		apiClient, err := NewAPIClient(baseURL)
@@ -49,22 +50,26 @@ func (s *StatusCmd) Run() error {
 					if err := json.NewDecoder(resp.Body).Decode(&efmrlResp); err == nil {
 						efmrlName = efmrlResp.Efmrl.Name
 					}
+				} else if resp.StatusCode == 404 {
+					efmrlNotFound = true
 				}
 			}
 
-			// Fetch domains separately
-			resp2, err := apiClient.Get(fmt.Sprintf("/admin/efmrls/%s/domains", config.Site.SiteID))
-			if err == nil {
-				defer resp2.Body.Close()
-				if resp2.StatusCode == 200 {
-					var domainsResp struct {
-						Domains []struct {
-							Domain string `json:"domain"`
-						} `json:"domains"`
-					}
-					if err := json.NewDecoder(resp2.Body).Decode(&domainsResp); err == nil {
-						for _, d := range domainsResp.Domains {
-							efmrlDomains = append(efmrlDomains, d.Domain)
+			// Fetch domains separately (only if efmrl was found)
+			if !efmrlNotFound {
+				resp2, err := apiClient.Get(fmt.Sprintf("/admin/efmrls/%s/domains", config.Site.SiteID))
+				if err == nil {
+					defer resp2.Body.Close()
+					if resp2.StatusCode == 200 {
+						var domainsResp struct {
+							Domains []struct {
+								Domain string `json:"domain"`
+							} `json:"domains"`
+						}
+						if err := json.NewDecoder(resp2.Body).Decode(&domainsResp); err == nil {
+							for _, d := range domainsResp.Domains {
+								efmrlDomains = append(efmrlDomains, d.Domain)
+							}
 						}
 					}
 				}
@@ -74,6 +79,10 @@ func (s *StatusCmd) Run() error {
 
 	fmt.Println("Site Status")
 	fmt.Println("===========")
+	if efmrlNotFound {
+		fmt.Fprintf(os.Stderr, "\nWARNING: Efmrl with this ID was not found or you no longer have access.\n")
+		fmt.Fprintf(os.Stderr, "         It may have been deleted or you may have been removed from the pod.\n\n")
+	}
 	if efmrlName != "" {
 		fmt.Printf("Name:      %s\n", efmrlName)
 	}

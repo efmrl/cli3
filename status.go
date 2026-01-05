@@ -32,6 +32,7 @@ func (s *StatusCmd) Run() error {
 	// Fetch efmrl details from server if logged in and we have a site ID
 	var efmrlName string
 	var efmrlDomains []string
+	var efmrlQuota *QuotaInfo
 	var efmrlNotFound bool
 	if loggedIn && config.Site.SiteID != "" {
 		baseURL := fmt.Sprintf("https://%s", baseHost)
@@ -73,6 +74,12 @@ func (s *StatusCmd) Run() error {
 						}
 					}
 				}
+
+				// Fetch quota information
+				quota, err := fetchQuota(apiClient, config.Site.SiteID)
+				if err == nil {
+					efmrlQuota = quota
+				}
 			}
 		}
 	}
@@ -96,6 +103,11 @@ func (s *StatusCmd) Run() error {
 				fmt.Printf("           %s\n", domain)
 			}
 		}
+	}
+	if efmrlQuota != nil {
+		fmt.Printf("Quota:     currently using %s; %s available\n",
+			formatBytes(efmrlQuota.CurrentSpace),
+			formatBytes(efmrlQuota.AvailableSpace))
 	}
 	fmt.Printf("Dir:       %s\n", config.Site.Dir)
 	fmt.Printf("Base Host: %s\n", baseHost)

@@ -44,6 +44,13 @@ type SyncPlan struct {
 	Unchanged []string
 }
 
+// QuotaInfo represents quota information for an efmrl
+type QuotaInfo struct {
+	CurrentSpace   int64 `json:"currentSpace"`
+	MaxSpace       int64 `json:"maxSpace"`
+	AvailableSpace int64 `json:"availableSpace"`
+}
+
 func (s *SyncCmd) Run() error {
 	// 1. Load configuration
 	config, err := LoadConfig()
@@ -84,24 +91,38 @@ func (s *SyncCmd) Run() error {
 	}
 	fmt.Printf("Found %d local file(s)\n\n", len(localFiles))
 
-	// 3. Fetch remote file list
-	fmt.Println("Fetching remote file list...")
+	// 3. Check quota before syncing
+	fmt.Println("Checking quota...")
 	baseURL := fmt.Sprintf("https://%s", config.GetBaseHost())
 	apiClient, err := NewAPIClient(baseURL)
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)
 	}
 
+	quota, err := fetchQuota(apiClient, config.Site.SiteID)
+	if err != nil {
+		return fmt.Errorf("failed to fetch quota: %w", err)
+	}
+
+	if err := validateQuota(localFiles, quota); err != nil {
+		return err
+	}
+	fmt.Printf("Quota check passed (local: %s, quota: %s)\n\n",
+		formatBytes(calculateTotalSize(localFiles)),
+		formatBytes(quota.MaxSpace))
+
+	// 4. Fetch remote file list
+	fmt.Println("Fetching remote file list...")
 	remoteFiles, err := fetchRemoteFiles(apiClient, config.Site.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch remote files: %w", err)
 	}
 	fmt.Printf("Found %d remote file(s)\n\n", len(remoteFiles))
 
-	// 4. Compute sync plan
+	// 5. Compute sync plan
 	plan := computeSyncPlan(localFiles, remoteFiles, s.Force, s.Delete)
 
-	// 5. Display plan
+	// 6. Display plan
 	fmt.Println("Sync Plan")
 	fmt.Println("=========")
 	if len(plan.ToUpload) > 0 {
@@ -129,7 +150,7 @@ func (s *SyncCmd) Run() error {
 		return nil
 	}
 
-	// 6. Execute plan (or exit if dry-run)
+	// 7. Execute plan (or exit if dry-run)
 	if s.DryRun {
 		fmt.Println("\n--dry-run mode: no changes made")
 		return nil
@@ -250,6 +271,76 @@ func fetchRemoteFiles(client *APIClient, siteID string) ([]RemoteFile, error) {
 	}
 
 	return result.Files, nil
+}
+
+// fetchQuota retrieves quota information from the server
+func fetchQuota(client *APIClient, siteID string) (*QuotaInfo, error) {
+	resp, err := client.Get(fmt.Sprintf("/admin/efmrls/%s/quota", siteID))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var quota QuotaInfo
+	if err := json.NewDecoder(resp.Body).Decode(&quota); err != nil {
+		return nil, fmt.Errorf("failed to parse quota response: %w", err)
+	}
+
+	return &quota, nil
+}
+
+// validateQuota checks if the local files will fit within the efmrl's quota
+func validateQuota(localFiles []LocalFile, quota *QuotaInfo) error {
+	// Calculate total size of local files
+	var totalLocalSize int64
+	for _, lf := range localFiles {
+		totalLocalSize += lf.Size
+	}
+
+	// Check if total local size exceeds max quota
+	if totalLocalSize > quota.MaxSpace {
+		return fmt.Errorf(
+			"local directory size (%s) exceeds efmrl quota (%s)",
+			formatBytes(totalLocalSize),
+			formatBytes(quota.MaxSpace),
+		)
+	}
+
+	return nil
+}
+
+// formatBytes formats a byte count as a human-readable string
+func formatBytes(bytes int64) string {
+	const (
+		KB = 1024
+		MB = 1024 * KB
+		GB = 1024 * MB
+	)
+
+	switch {
+	case bytes >= GB:
+		return fmt.Sprintf("%.2f GB", float64(bytes)/float64(GB))
+	case bytes >= MB:
+		return fmt.Sprintf("%.2f MB", float64(bytes)/float64(MB))
+	case bytes >= KB:
+		return fmt.Sprintf("%.2f KB", float64(bytes)/float64(KB))
+	default:
+		return fmt.Sprintf("%d bytes", bytes)
+	}
+}
+
+// calculateTotalSize calculates the total size of all local files
+func calculateTotalSize(files []LocalFile) int64 {
+	var total int64
+	for _, f := range files {
+		total += f.Size
+	}
+	return total
 }
 
 // computeSyncPlan determines which files need to be uploaded or deleted

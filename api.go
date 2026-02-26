@@ -47,7 +47,8 @@ func (c *APIClient) getAccessToken() (string, error) {
 	return creds.AccessToken, nil
 }
 
-// refreshTokenIfNeeded attempts to refresh the access token using the refresh token
+// refreshTokenIfNeeded attempts to refresh the access token using the refresh token.
+// It branches on creds.Provider to use the correct refresh mechanism.
 func (c *APIClient) refreshTokenIfNeeded() error {
 	config, err := LoadGlobalConfig()
 	if err != nil {
@@ -59,21 +60,40 @@ func (c *APIClient) refreshTokenIfNeeded() error {
 		return fmt.Errorf("no refresh token available (run 'efmrl3 login' again)")
 	}
 
-	// Get WorkOS client ID
-	clientID := getWorkOSClientID()
+	var newCreds HostCredentials
 
-	// Refresh the token
-	tokenResp, err := RefreshAccessToken(clientID, creds.RefreshToken)
-	if err != nil {
-		return fmt.Errorf("failed to refresh token: %w", err)
+	switch creds.Provider {
+	case "google":
+		clientID := getGoogleClientID()
+		clientSecret := getGoogleClientSecret()
+		tokenResp, err := RefreshGoogleToken(clientID, clientSecret, creds.RefreshToken)
+		if err != nil {
+			return fmt.Errorf("failed to refresh Google token: %w", err)
+		}
+		// Google may not return a new refresh_token; keep the old one if absent
+		newRefreshToken := tokenResp.RefreshToken
+		if newRefreshToken == "" {
+			newRefreshToken = creds.RefreshToken
+		}
+		newCreds = HostCredentials{
+			AccessToken:  tokenResp.IDToken,
+			RefreshToken: newRefreshToken,
+			Provider:     "google",
+		}
+	default: // "workos" or legacy entries without a provider
+		clientID := getWorkOSClientID()
+		tokenResp, err := RefreshAccessToken(clientID, creds.RefreshToken)
+		if err != nil {
+			return fmt.Errorf("failed to refresh token: %w", err)
+		}
+		newCreds = HostCredentials{
+			AccessToken:  tokenResp.AccessToken,
+			RefreshToken: tokenResp.RefreshToken,
+			Provider:     "workos",
+		}
 	}
 
-	// Save the new tokens
-	config.SetHostCredentials(c.host, HostCredentials{
-		AccessToken:  tokenResp.AccessToken,
-		RefreshToken: tokenResp.RefreshToken,
-	})
-
+	config.SetHostCredentials(c.host, newCreds)
 	if err := SaveGlobalConfig(config); err != nil {
 		return fmt.Errorf("failed to save refreshed credentials: %w", err)
 	}

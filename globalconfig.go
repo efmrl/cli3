@@ -20,6 +20,7 @@ type GlobalConfig struct {
 type HostCredentials struct {
 	AccessToken  string `toml:"access_token,omitempty"`
 	RefreshToken string `toml:"refresh_token,omitempty"`
+	Provider     string `toml:"provider,omitempty"` // "google" or "workos"
 }
 
 // GetGlobalConfigPath returns the path to the global config file

@@ -11,6 +11,14 @@ import (
 	"time"
 )
 
+// PollError represents a non-fatal polling error during device authorization.
+type PollError struct{ Type string }
+
+func (e *PollError) Error() string { return e.Type }
+
+// IsPollError checks if an error is a non-fatal polling error.
+func IsPollError(err error) bool { _, ok := err.(*PollError); return ok }
+
 // googleDeviceClientID and googleDeviceClientSecret are the "TV and Limited Input"
 // OAuth credentials for the CLI device flow. They are safe to embed in the binary;
 // Google's own documentation permits this for installed/device-flow clients.

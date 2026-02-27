@@ -66,37 +66,21 @@ func (c *APIClient) refreshTokenIfNeeded() error {
 		return fmt.Errorf("no refresh token available (run 'efmrl3 login' again)")
 	}
 
-	var newCreds HostCredentials
-
-	switch creds.Provider {
-	case "google":
-		clientID := getGoogleClientID()
-		clientSecret := getGoogleClientSecret()
-		tokenResp, err := RefreshGoogleToken(clientID, clientSecret, creds.RefreshToken)
-		if err != nil {
-			return fmt.Errorf("failed to refresh Google token: %w", err)
-		}
-		// Google may not return a new refresh_token; keep the old one if absent
-		newRefreshToken := tokenResp.RefreshToken
-		if newRefreshToken == "" {
-			newRefreshToken = creds.RefreshToken
-		}
-		newCreds = HostCredentials{
-			AccessToken:  tokenResp.IDToken,
-			RefreshToken: newRefreshToken,
-			Provider:     "google",
-		}
-	default: // "workos" or legacy entries without a provider
-		clientID := getWorkOSClientID()
-		tokenResp, err := RefreshAccessToken(clientID, creds.RefreshToken)
-		if err != nil {
-			return fmt.Errorf("failed to refresh token: %w", err)
-		}
-		newCreds = HostCredentials{
-			AccessToken:  tokenResp.AccessToken,
-			RefreshToken: tokenResp.RefreshToken,
-			Provider:     "workos",
-		}
+	clientID := getGoogleClientID()
+	clientSecret := getGoogleClientSecret()
+	tokenResp, err := RefreshGoogleToken(clientID, clientSecret, creds.RefreshToken)
+	if err != nil {
+		return fmt.Errorf("failed to refresh Google token: %w", err)
+	}
+	// Google may not return a new refresh_token; keep the old one if absent
+	newRefreshToken := tokenResp.RefreshToken
+	if newRefreshToken == "" {
+		newRefreshToken = creds.RefreshToken
+	}
+	newCreds := HostCredentials{
+		AccessToken:  tokenResp.IDToken,
+		RefreshToken: newRefreshToken,
+		Provider:     "google",
 	}
 
 	config.SetHostCredentials(c.host, newCreds)
@@ -197,12 +181,3 @@ func (c *APIClient) Delete(path string) (*http.Response, error) {
 	return c.doRequest("DELETE", path, nil)
 }
 
-// getWorkOSClientID returns the WorkOS client ID from environment or default
-func getWorkOSClientID() string {
-	clientID := os.Getenv("WORKOS_CLIENT_ID")
-	if clientID == "" {
-		// This is a public identifier (OAuth client ID), safe to include in the CLI
-		clientID = "client_01KCJEFZQVSPSKHT1QAS19R0X1"
-	}
-	return clientID
-}

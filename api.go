@@ -11,8 +11,14 @@ import (
 
 // APIClient handles authenticated API requests to the efmrl server
 type APIClient struct {
-	BaseURL string
-	host    string
+	BaseURL       string
+	host          string
+	refreshFailed bool // true after a failed token refresh; prevents repeated attempts
+}
+
+// AuthFailed reports whether a token refresh was attempted and failed.
+func (c *APIClient) AuthFailed() bool {
+	return c.refreshFailed
 }
 
 // NewAPIClient creates a new API client for the specified base URL
@@ -143,10 +149,15 @@ func (c *APIClient) doRequest(method, path string, body interface{}) (*http.Resp
 	if resp.StatusCode == http.StatusUnauthorized {
 		resp.Body.Close()
 
+		if c.refreshFailed {
+			return nil, fmt.Errorf("session expired — run 'efmrl3 login' to re-authenticate")
+		}
+
 		fmt.Fprintln(os.Stderr, "Access token expired, refreshing...")
 
 		if err := c.refreshTokenIfNeeded(); err != nil {
-			return nil, fmt.Errorf("failed to refresh credentials: %w", err)
+			c.refreshFailed = true
+			return nil, fmt.Errorf("session expired — run 'efmrl3 login' to re-authenticate")
 		}
 
 		// Retry the request with the new token

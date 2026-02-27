@@ -34,9 +34,10 @@ func (s *StatusCmd) Run() error {
 	var efmrlDomains []string
 	var efmrlQuota *QuotaInfo
 	var efmrlNotFound bool
+	var apiClient *APIClient
 	if loggedIn && config.Site.SiteID != "" {
 		baseURL := fmt.Sprintf("https://%s", baseHost)
-		apiClient, err := NewAPIClient(baseURL)
+		apiClient, err = NewAPIClient(baseURL)
 		if err == nil {
 			// Fetch efmrl details (name, etc.)
 			resp, err := apiClient.Get(fmt.Sprintf("/admin/efmrls/%s", config.Site.SiteID))
@@ -57,7 +58,7 @@ func (s *StatusCmd) Run() error {
 			}
 
 			// Fetch domains separately (only if efmrl was found)
-			if !efmrlNotFound {
+			if !efmrlNotFound && !apiClient.AuthFailed() {
 				resp2, err := apiClient.Get(fmt.Sprintf("/admin/efmrls/%s/domains", config.Site.SiteID))
 				if err == nil {
 					defer resp2.Body.Close()
@@ -111,7 +112,11 @@ func (s *StatusCmd) Run() error {
 	}
 	fmt.Printf("Dir:       %s\n", config.Site.Dir)
 	fmt.Printf("Base Host: %s\n", baseHost)
-	fmt.Printf("Logged in: %v\n", loggedIn)
+	if apiClient != nil && apiClient.AuthFailed() {
+		fmt.Println("Logged in: no (session expired — run 'efmrl3 login')")
+	} else {
+		fmt.Printf("Logged in: %v\n", loggedIn)
+	}
 
 	return nil
 }

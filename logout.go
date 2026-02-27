@@ -6,7 +6,7 @@ import (
 
 // LogoutCmd handles clearing authentication credentials
 type LogoutCmd struct {
-	Host string `help:"Server host (defaults to base_host from efmrl.toml or tempemail.app)" default:""`
+	Host string `help:"Server host (defaults to base_host from efmrl.toml or efmrl.work)" default:""`
 	All  bool   `help:"Remove credentials for all hosts" default:"false"`
 }
 

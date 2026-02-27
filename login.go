@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/pkg/browser"
@@ -200,9 +201,18 @@ func (l *LoginCmd) loginWithWorkOS(host string) error {
 	return verifyAndPrint(host)
 }
 
+// hostToBaseURL returns the appropriate base URL for the given host,
+// using http:// for localhost and https:// for all other hosts.
+func hostToBaseURL(host string) string {
+	if host == "localhost" || strings.HasPrefix(host, "localhost:") {
+		return "http://" + host
+	}
+	return "https://" + host
+}
+
 // verifyAndPrint confirms authentication by calling /api/session and prints the result.
 func verifyAndPrint(host string) error {
-	baseURL := fmt.Sprintf("https://%s", host)
+	baseURL := hostToBaseURL(host)
 	apiClient, err := NewAPIClient(baseURL)
 	if err != nil {
 		return fmt.Errorf("failed to create API client: %w", err)

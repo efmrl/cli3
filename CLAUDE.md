@@ -4,7 +4,7 @@ The CLI will be written in Go. It will use "kong", https://pkg.go.dev/github.com
 
 The CLI will have a config file that describes the efmrl site it's hosting for, and how to sync their changes. This config file will typically be kept with the source for the site. For example, if the site is a hugo site, then along with a hugo.toml file, we will have a config file for syncing the site to efmrl. There will also be credentials that are not kept in the config. These will be kept somewhere in the $HOME/.config/efmrl3 directory. By keeping these things outside the "current" directory, we avoid storing credentials in (for example) github.
 
-The efmrl server uses WorkOS (https://workos.com) for authentication. Let's try to use the "Device Authentication Flow" to authenticate our CLI with the server. The user will be directed in their browser to log in if necessary, and confirm or deny that the CLI should be granted authorization to act on the user's behalf.
+The efmrl server uses Google OAuth 2.0 for authentication. The CLI uses the [OAuth 2.0 Device Authorization Grant](https://developers.google.com/identity/protocols/oauth2/limited-input-device) to authenticate with the server. The user is directed in their browser to log in if necessary and confirm or deny that the CLI should be granted authorization to act on their behalf. The resulting Google ID token is stored in `~/.config/efmrl3/credentials.toml` and sent as a Bearer token on all API requests.
 
 The CLI should be hierarchical. If the command is called "efmrl3", then example commands might be "efmrl3 status", "efmrl3 configure", "efmrl3 login", and "efmrl3 sync".
 

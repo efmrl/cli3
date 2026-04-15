@@ -181,3 +181,70 @@ func (c *APIClient) Delete(path string) (*http.Response, error) {
 	return c.doRequest("DELETE", path, nil)
 }
 
+// doBinaryRequest performs an HTTP request with a raw binary body and custom headers.
+// Used for multipart part uploads where the body is raw bytes, not JSON.
+func (c *APIClient) doBinaryRequest(method, path string, headers map[string]string, body []byte) (*http.Response, error) {
+	url := c.BaseURL + path
+
+	makeReq := func(token string) (*http.Request, error) {
+		req, err := http.NewRequest(method, url, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.ContentLength = int64(len(body))
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		return req, nil
+	}
+
+	accessToken, err := c.getAccessToken()
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := makeReq(accessToken)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpClient := &http.Client{}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		resp.Body.Close()
+
+		if c.refreshFailed {
+			return nil, fmt.Errorf("session expired — run 'efmrl3 login' to re-authenticate")
+		}
+
+		fmt.Fprintln(os.Stderr, "Access token expired, refreshing...")
+
+		if err := c.refreshTokenIfNeeded(); err != nil {
+			c.refreshFailed = true
+			return nil, fmt.Errorf("session expired — run 'efmrl3 login' to re-authenticate")
+		}
+
+		accessToken, err = c.getAccessToken()
+		if err != nil {
+			return nil, err
+		}
+
+		req, err = makeReq(accessToken)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create retry request: %w", err)
+		}
+
+		resp, err = httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("retry request failed: %w", err)
+		}
+	}
+
+	return resp, nil
+}
+

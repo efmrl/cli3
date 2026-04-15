@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,8 +194,14 @@ func scanLocalFiles(rootDir string) ([]LocalFile, error) {
 			}
 		}
 
-		// Compute ETag (MD5 hash)
-		etag, err := computeFileETag(path)
+		// Compute ETag — use multipart formula for large files so it matches
+		// what R2 stores after a multipart upload (md5(md5_p1+md5_p2+...)-N).
+		var etag string
+		if info.Size() > multipartThreshold {
+			etag, err = computeMultipartETag(path)
+		} else {
+			etag, err = computeFileETag(path)
+		}
 		if err != nil {
 			return fmt.Errorf("failed to compute ETag for %s: %w", relPath, err)
 		}
@@ -217,6 +224,40 @@ func scanLocalFiles(rootDir string) ([]LocalFile, error) {
 	})
 
 	return files, err
+}
+
+// computeMultipartETag computes the ETag that R2 (and S3) assign after a
+// multipart upload: MD5 of the concatenated raw MD5s of each part, with
+// "-N" appended where N is the number of parts.
+// Uses the same chunk size as the actual upload so the part boundaries match.
+func computeMultipartETag(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	var partMD5s []byte
+	buf := make([]byte, multipartChunkSize)
+	numParts := 0
+
+	for {
+		n, readErr := io.ReadFull(f, buf)
+		if n > 0 {
+			sum := md5.Sum(buf[:n])
+			partMD5s = append(partMD5s, sum[:]...)
+			numParts++
+		}
+		if readErr == io.EOF || readErr == io.ErrUnexpectedEOF {
+			break
+		}
+		if readErr != nil {
+			return "", readErr
+		}
+	}
+
+	combined := md5.Sum(partMD5s)
+	return fmt.Sprintf("%s-%d", hex.EncodeToString(combined[:]), numParts), nil
 }
 
 // computeFileETag computes the MD5 hash of a file (matching R2's ETag format)
@@ -418,8 +459,29 @@ func executeSyncPlan(client *APIClient, siteID string, plan SyncPlan) error {
 	return nil
 }
 
-// uploadFile uploads a single file to the server
+const (
+	// multipartThreshold is the file size above which multipart upload is used.
+	// Cloudflare enforces a 100 MB hard limit on request bodies at the edge,
+	// so any single-request upload above this will be rejected with 413.
+	multipartThreshold = 50 * 1024 * 1024 // 50 MB
+
+	// multipartChunkSize is the size of each part sent to the server.
+	// Must be ≥ 5 MB (R2 minimum) and well under the 100 MB edge limit.
+	multipartChunkSize = 50 * 1024 * 1024 // 50 MB
+)
+
+// UploadedPart holds the result of a successfully uploaded multipart part.
+type UploadedPart struct {
+	PartNumber int    `json:"partNumber"`
+	ETag       string `json:"etag"`
+}
+
+// uploadFile uploads a single file to the server, using multipart for large files.
 func uploadFile(client *APIClient, siteID string, file LocalFile) error {
+	if file.Size > multipartThreshold {
+		return uploadLargeFile(client, siteID, file)
+	}
+
 	// Open the file
 	f, err := os.Open(file.AbsPath)
 	if err != nil {
@@ -491,6 +553,151 @@ func uploadFile(client *APIClient, siteID string, file LocalFile) error {
 	}
 
 	return nil
+}
+
+// uploadLargeFile uploads a file that exceeds the single-request size limit
+// using R2 multipart upload: begin → upload parts → complete.
+func uploadLargeFile(client *APIClient, siteID string, file LocalFile) error {
+	numParts := int((file.Size + multipartChunkSize - 1) / multipartChunkSize)
+	fmt.Printf("(multipart: %d parts)\n", numParts)
+
+	// 1. Begin
+	uploadID, err := beginMultipartUpload(client, siteID, file.Path, file.ContentType, file.Size)
+	if err != nil {
+		return fmt.Errorf("failed to begin multipart upload: %w", err)
+	}
+
+	// 2. Open file and upload parts
+	f, err := os.Open(file.AbsPath)
+	if err != nil {
+		abortMultipartUpload(client, siteID, uploadID, file.Path)
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer f.Close()
+
+	var uploadedParts []UploadedPart
+	buf := make([]byte, multipartChunkSize)
+
+	for partNum := 1; partNum <= numParts; partNum++ {
+		n, readErr := io.ReadFull(f, buf)
+		if readErr != nil && readErr != io.ErrUnexpectedEOF {
+			abortMultipartUpload(client, siteID, uploadID, file.Path)
+			return fmt.Errorf("failed to read part %d: %w", partNum, readErr)
+		}
+		if n == 0 {
+			break
+		}
+
+		chunk := buf[:n]
+		fmt.Printf("  part %d/%d (%s)... ", partNum, numParts, formatBytes(int64(n)))
+
+		part, err := doUploadPart(client, siteID, uploadID, file.Path, partNum, chunk)
+		if err != nil {
+			fmt.Printf("FAILED\n")
+			abortMultipartUpload(client, siteID, uploadID, file.Path)
+			return fmt.Errorf("failed to upload part %d: %w", partNum, err)
+		}
+
+		fmt.Printf("OK\n")
+		uploadedParts = append(uploadedParts, part)
+	}
+
+	// 3. Complete
+	if err := completeMultipartUpload(client, siteID, uploadID, file.Path, uploadedParts, file.Size); err != nil {
+		return fmt.Errorf("failed to complete multipart upload: %w", err)
+	}
+
+	return nil
+}
+
+func beginMultipartUpload(client *APIClient, siteID, filePath, contentType string, totalSize int64) (string, error) {
+	body := map[string]interface{}{
+		"filePath":    filePath,
+		"contentType": contentType,
+		"totalSize":   totalSize,
+	}
+
+	resp, err := client.Post(fmt.Sprintf("/admin/efmrls/%s/multipart", siteID), body)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("server returned %d: %s", resp.StatusCode, string(raw))
+	}
+
+	var result struct {
+		UploadID string `json:"uploadId"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return result.UploadID, nil
+}
+
+func doUploadPart(client *APIClient, siteID, uploadID, filePath string, partNumber int, data []byte) (UploadedPart, error) {
+	path := fmt.Sprintf("/admin/efmrls/%s/multipart/%s/parts/%d", siteID, uploadID, partNumber)
+	headers := map[string]string{
+		"Content-Type": "application/octet-stream",
+		"X-File-Path":  filePath,
+	}
+
+	resp, err := client.doBinaryRequest("PUT", path, headers, data)
+	if err != nil {
+		return UploadedPart{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		return UploadedPart{}, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(raw))
+	}
+
+	var part UploadedPart
+	if err := json.NewDecoder(resp.Body).Decode(&part); err != nil {
+		return UploadedPart{}, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return part, nil
+}
+
+func completeMultipartUpload(client *APIClient, siteID, uploadID, filePath string, parts []UploadedPart, totalSize int64) error {
+	body := map[string]interface{}{
+		"filePath":  filePath,
+		"parts":     parts,
+		"totalSize": totalSize,
+	}
+
+	resp, err := client.Post(fmt.Sprintf("/admin/efmrls/%s/multipart/%s/complete", siteID, uploadID), body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("server returned %d: %s", resp.StatusCode, string(raw))
+	}
+
+	return nil
+}
+
+// abortMultipartUpload cancels an in-progress multipart upload.
+// Errors are logged but not returned — abort is best-effort cleanup.
+func abortMultipartUpload(client *APIClient, siteID, uploadID, filePath string) {
+	path := fmt.Sprintf("/admin/efmrls/%s/multipart/%s?filePath=%s", siteID, uploadID, url.QueryEscape(filePath))
+	resp, err := client.doRequest("DELETE", path, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to abort multipart upload %s: %v\n", uploadID, err)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintf(os.Stderr, "Warning: server returned %d when aborting multipart upload %s\n", resp.StatusCode, uploadID)
+	}
 }
 
 // deleteFile deletes a single file from the server
